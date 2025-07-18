@@ -5,6 +5,9 @@ import math
 
 from wireframe_3d_lib import Camera, Matrix3D, WireframeRenderer, WireframeObject
 
+### functions for making indivisual parts of a starship
+
+# HULL (cyan part)
 def create_starship_hull():
     vertices = [
         # Front section (sharp tip)
@@ -43,6 +46,7 @@ def create_starship_hull():
     
     return WireframeObject(vertices, edges, "#00ffff")
 
+# TANK (yellow parts)
 def create_fuel_tank():
     vertices = [
         # Tank front section (circular cross-section)
@@ -67,7 +71,7 @@ def create_fuel_tank():
         [-0.1, 0, 1],      # 12: pipe front
         [-0.1, 0, -1],     # 13: pipe rear
     ]
-    
+
     edges = [
         # Front cross-section
         [0, 1], [1, 2], [2, 3], [3, 0],
@@ -85,6 +89,7 @@ def create_fuel_tank():
     return WireframeObject(vertices, edges, "#ffff00")
 
 def create_warp_nacelle():
+    """warp unit (warp motor)"""
     vertices = [
         # Nacelle front section
         [-0.3, -0.2, 3],   # 0: front left bottom
@@ -174,16 +179,15 @@ def create_starship_engine():
     
     return WireframeObject(vertices, edges, "#ff0000")
 
-def create_engine_flame():
-    """Create engine flame effect (gradient transparency bar)"""
+def create_engine_flame(warp = False):
     vertices = []
     edges = []
-    
+
     # Divide bar into multiple segments to create transparency gradient
-    segments = 8
-    start_z = -3.5
-    end_z = -5.5
-    width_start = 0.1
+    segments = 15
+    start_z = -1.5
+    end_z = -4.5
+    width_start = 0.2
     width_end = 0.05
     
     for i in range(segments + 1):
@@ -194,31 +198,21 @@ def create_engine_flame():
         # Rectangle vertices for each segment
         base_idx = i * 4
         vertices.extend([
-            [-width, -width, z],  # left bottom
-            [width, -width, z],   # right bottom
-            [width, width, z],    # right top
-            [-width, width, z],   # left top
+            [-width, -width, z],
+            [width, -width, z],
+            [width, width, z],
+            [-width, width, z],
         ])
-        
+
         # Edges within segment
         if i < segments:  # except for the last segment
             # Rectangle of current segment
             edges.extend([
-                [base_idx, base_idx + 1],     # bottom edge
-                [base_idx + 1, base_idx + 2], # right edge
-                [base_idx + 2, base_idx + 3], # top edge
-                [base_idx + 3, base_idx],     # left edge
+                [base_idx, base_idx + 1],
+                [base_idx + 1, base_idx + 2],
+                [base_idx + 2, base_idx + 3],
+                [base_idx + 3, base_idx],
             ])
-            
-            # Connection to next segment
-            next_base = (i + 1) * 4
-            edges.extend([
-                [base_idx, next_base],         # left bottom connection
-                [base_idx + 1, next_base + 1], # right bottom connection
-                [base_idx + 2, next_base + 2], # right top connection
-                [base_idx + 3, next_base + 3], # left top connection
-            ])
-    
     # Rectangle of the last segment
     last_base = segments * 4
     edges.extend([
@@ -228,28 +222,58 @@ def create_engine_flame():
         [last_base + 3, last_base],
     ])
     
-    flame = WireframeObject(vertices, edges, "#ff0000")
-    flame.is_flame = True  # Add flag
+    flame = WireframeObject(vertices, edges, "#3f9000")
+    if warp:
+        flame.is_warp = True
+    else:
+        flame.is_flame = True
+
     return flame
 
 def create_star_field():
     vertices = []
     edges = []
-    
+
     # Place random stars
     np.random.seed(42)  # For reproducibility
-    for i in range(100):
-        x = np.random.uniform(-20, 20)
-        y = np.random.uniform(-20, 20)
-        z = np.random.uniform(-50, 50)
+    for i in range(2800): # rather large value because final movement decided yet
+        x = np.random.uniform(-80, 80)
+        y = np.random.uniform(-80, 80)
+        z = np.random.uniform(-80, 100)
+        vertices.append([x, y, z])
+        x += 0
+        y += 0
+        z += 1     # stars're treated as lines aligned to z axis
         vertices.append([x, y, z])
     
-    # Stars are displayed as single points (self-loop edges)
-    for i in range(len(vertices)):
-        edges.append([i, i])
+    for i in range(0, len(vertices), 2):
+        edges.append([i, i+1])
     
     return WireframeObject(vertices, edges, "#ffffff")
 
+def create_grid_surface(size=10, grid_spacing=5, y_level=-5):
+    """making gridded ground"""
+    vertices = []
+    edges = []
+    half_size = size // 2
+    
+    # vertical (x)
+    for x in range(-half_size, half_size + 1, grid_spacing):
+        start_idx = len(vertices)
+        vertices.append([x, y_level, -half_size])
+        vertices.append([x, y_level, half_size])
+        edges.append([start_idx, start_idx + 1])
+    
+    # horizontal (z)
+    for z in range(-half_size, half_size + 1, grid_spacing):
+        start_idx = len(vertices)
+        vertices.append([-half_size, y_level, z])
+        vertices.append([half_size, y_level, z])
+        edges.append([start_idx, start_idx + 1])
+    
+    return WireframeObject(vertices, edges, "#ff00ff")
+
+# Animation class
 class StarshipDemo:
     def __init__(self):
         self.root = tk.Tk()
@@ -262,7 +286,7 @@ class StarshipDemo:
         
         self.renderer = WireframeRenderer(self.canvas, 1200, 900)
         # Camera settings
-        self.camera = Camera([0, 5, 10], [0, 0, 0], [0, 1, 0], aspect=1200/900)
+        self.camera = Camera([0, 5, 1], [0, 0, 0], [0, 1, 0], aspect=1200/900)
         self.renderer.set_camera(self.camera)
         
         self.starship_parts = []
@@ -277,25 +301,33 @@ class StarshipDemo:
         stars = create_star_field()
         self.renderer.add_object(stars)
         
+        # grid surface (not use)
+        #grid_surface = create_grid_surface(size=200, grid_spacing=3, y_level=-10)
+        #self.renderer.add_object(grid_surface)
+        
         hull = create_starship_hull()
         self.renderer.add_object(hull)
         self.starship_parts.append(hull)
         
+        # left TANK
         left_tank = create_fuel_tank()
         left_tank.translate(-2.5, 0, 0)
         self.renderer.add_object(left_tank)
         self.starship_parts.append(left_tank)
         
+        # right TANK
         right_tank = create_fuel_tank()
         right_tank.translate(2.5, 0, 0)
         self.renderer.add_object(right_tank)
         self.starship_parts.append(right_tank)
         
+        # left warp nacelle
         left_nacelle = create_warp_nacelle()
         left_nacelle.translate(-3.5, -1, 0)
         self.renderer.add_object(left_nacelle)
         self.starship_parts.append(left_nacelle)
         
+        # right warp nacelle
         right_nacelle = create_warp_nacelle()
         right_nacelle.translate(3.5, -1, 0)
         self.renderer.add_object(right_nacelle)
@@ -303,48 +335,53 @@ class StarshipDemo:
         
         main_engine = create_starship_engine()
         main_engine.translate(0, -0.5, 0)
-        main_engine.scale(1.5, 1.5, 1.5)  # Make it slightly larger
+        main_engine.scale(1.5, 1.5, 1.5)
         self.renderer.add_object(main_engine)
         self.starship_parts.append(main_engine)
         
+        # engine's FLAME
         main_flame = create_engine_flame()
         main_flame.translate(0, -0.5, 0)
-        main_flame.scale(1.5, 1.5, 1.8)
+        main_flame.scale(1.5, 1.5, 15.8)   # make it long
         self.renderer.add_object(main_flame)
         self.starship_parts.append(main_flame)
         
-        # Warp nacelle energy effect (left)
-        left_warp_effect = create_engine_flame()
+        # warp unit's ENERGY FLOW (left)
+        left_warp_effect = create_engine_flame(True)
         left_warp_effect.translate(-3.5, -1, 0)
         left_warp_effect.scale(0.8, 0.8, 2)
-        left_warp_effect.color = "#00ffff"  # Cyan color
         self.renderer.add_object(left_warp_effect)
         self.starship_parts.append(left_warp_effect)
-        
-        # Warp nacelle energy effect (right)
-        right_warp_effect = create_engine_flame()
+
+        # warp unit's ENERGY FLOW (right)       
+        right_warp_effect = create_engine_flame(True)
         right_warp_effect.translate(3.5, -1, 0)
         right_warp_effect.scale(0.8, 0.8, 2)
-        right_warp_effect.color = "#00ffff"  # Cyan color
         self.renderer.add_object(right_warp_effect)
         self.starship_parts.append(right_warp_effect)
     
     def animate(self):
+        """animation"""
         self.time += 0.03
+        if self.time > 40: self.time = 0
         
-        # Camera movement (orbiting around the starship)
-        camera_distance = 15
-        camera_angle = self.time * 0.3
-        self.camera.position[0] = camera_distance * math.cos(camera_angle)
-        self.camera.position[1] = 3 + 2 * math.sin(self.time * 0.5)
-        self.camera.position[2] = camera_distance * math.sin(camera_angle)
-        self.camera.target = [0, 0, 0]
+        # path of flight (go straight)
+        flight_height = -5
+        ship_x = self.time * 2
+        ship_y = flight_height + 1 * math.sin(self.time * 0.3)
+        ship_z = 0
+        
+        # camera lookat position 
+        self.camera.position[0] = 10 +ship_x  # back of starship
+        self.camera.position[1] = ship_y + 5 * math.cos(self.time*0.3)  # up and down
+        self.camera.position[2] = ship_z - 15   # Z
+        self.camera.target = [ship_x, ship_y, ship_z]
         self.camera.update()
         
-        # Starship rotation and banking
+        # bank angle
         ship_bank = math.sin(self.time * 0.7) * 0.3
         ship_pitch = math.sin(self.time * 0.5) * 0.2
-        ship_yaw = self.time * 0.1
+        ship_yaw = self.time * 0.2
         
         # Update each part of the starship
         for i, part in enumerate(self.starship_parts):
@@ -352,62 +389,71 @@ class StarshipDemo:
             
             # For hull
             if i == 0:  # hull
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             
             # For fuel tanks
             elif i == 1:  # left fuel tank
                 part.translate(-2.5, 0, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             elif i == 2:  # right fuel tank
                 part.translate(2.5, 0, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             
             # For warp nacelles (slight vibration effect)
             elif i == 3:  # left warp nacelle
                 nacelle_vibration = 0.02 * math.sin(self.time * 15)
                 part.translate(-3.5, -1 + nacelle_vibration, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             elif i == 4:  # right warp nacelle
                 nacelle_vibration = 0.02 * math.sin(self.time * 15 + math.pi/3)
                 part.translate(3.5, -1 + nacelle_vibration, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             
             # For main engine
             elif i == 5:  # main engine
                 part.scale(1.5, 1.5, 1.5)
                 part.translate(0, -0.5, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             
-            # For main engine flame (static, no animation)
+            # For main engine flame
             elif i == 6:  # main flame
                 part.scale(1.5, 1.5, 1.8)
-                part.translate(0, -0.5, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.translate(0, -0.5, -2)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             
             # For warp effects (static, no animation)
             elif i == 7:  # left warp effect
                 part.scale(0.8, 0.8, 2)
                 part.translate(-3.5, -1, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
             elif i == 8:  # right warp effect
                 part.scale(0.8, 0.8, 2)
                 part.translate(3.5, -1, 0)
-                part.rotate(ship_pitch, ship_yaw, ship_bank)
+                part.rotate(0, 0, ship_bank)
+                part.translate(ship_x, ship_y, ship_z)
         
-        # Star field rotation
+        # rotation of background stars (stars are now at index 0, grid surface at index 1)
         if len(self.renderer.objects) > 0:
             stars = self.renderer.objects[0]
             stars.transform_matrix = Matrix3D.identity()
             stars.rotate(0, self.time * 0.05, 0)
-        # Rendering
+        
         self.renderer.render()
         
+        # next frame
         self.root.after(16, self.animate)  # Approximately 60FPS
     
     def run(self):
         self.root.mainloop()
 
-# Execution
 if __name__ == "__main__":
     demo = StarshipDemo()
     demo.run()
